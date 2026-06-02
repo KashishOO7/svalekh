@@ -42,7 +42,8 @@ Built for speed and durability using modern web primitives:
 
 ```bash
    git clone [https://github.com/KashishOO7/svalekh.git](https://github.com/KashishOO7/svalekh.git)
-
+```
+```bash
    cd open-resume-pro
    ```
 
