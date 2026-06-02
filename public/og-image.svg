@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#09090B"/>
+
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#18181A" stroke-width="2"/>
+  </pattern>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <text x="50%" y="38%" font-family="system-ui, -apple-system, serif" font-size="48" font-weight="400" fill="#52525B" text-anchor="middle" letter-spacing="8">
+    स्वलेख
+  </text>
+  
+  <text x="50%" y="52%" font-family="system-ui, -apple-system, sans-serif" font-size="96" font-weight="900" fill="#FFFFFF" text-anchor="middle" dominant-baseline="middle" letter-spacing="4">
+    SVALEKH
+  </text>
+  
+  <text x="50%" y="65%" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="600" fill="#A1A1AA" text-anchor="middle" dominant-baseline="middle" letter-spacing="2">
+    100% LOCAL, PRIVACY-FIRST RESUME BUILDER
+  </text>
+</svg>

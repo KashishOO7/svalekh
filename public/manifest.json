@@ -1,0 +1,18 @@
+{
+  "name": "Svalekh Private Resume Builder",
+  "short_name": "Svalekh",
+  "description": "100% Local, Privacy-First Resume Builder",
+  "start_url": "/svalekh/",
+  "scope": "/svalekh/",
+  "display": "standalone",
+  "background_color": "#09090B",
+  "theme_color": "#18181A",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

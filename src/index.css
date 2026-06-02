@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Fira+Code:wght@400;600&family=Lato:ital,wght@0,400;0,700;1,400&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 10px; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+.page-breaker-overlay {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent calc(11in - 2px),
+    #ef4444 calc(11in - 2px),
+    #ef4444 11in
+  );
+  background-size: 100% 11in;
+}
+
+.redact-active-block {
+  position: relative;
+  outline: 1.5px dashed #ef4444 !important;
+  border-radius: 2px;
+}
+
+.is-redacted, .is-redacted * {
+  background-color: #000000 !important;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+@media print {
+  html, body, #root {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background: #ffffff !important;
+  }
+
+  #resume-print-target {
+    padding: 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+
+  .page-breaker-overlay {
+    background-image: none !important;
+  }
+
+  .group\/item {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .redact-active-block {
+    outline: none !important;
+  }
+
+  .print\:hidden, button, select, input[type="color"], input[type="range"] {
+    display: none !important;
+  }
+}

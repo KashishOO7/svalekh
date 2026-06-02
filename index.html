@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#18181A" />
+    <meta name="description" content="Svalekh - Privacy-first, zero-server local resume builder." />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'none';
+      script-src 'self' https://cdnjs.cloudflare.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      img-src 'self' data: blob:;
+      font-src 'self' data: https://fonts.gstatic.com;
+      connect-src 'self' https://cdnjs.cloudflare.com;
+      manifest-src 'self';
+      worker-src 'self' blob: https://cdnjs.cloudflare.com;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+    ">
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Svalekh | Private Resume Builder" />
+    <meta property="og:description" content="Stop uploading your career history to third-party databases. Build and export your resume entirely on your own machine." />
+    <meta property="og:image" content="https://kashishoo7.github.io/svalekh/og-image.jpg" />
+    <meta property="og:url" content="https://kashishoo7.github.io/svalekh/" />
+    
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Svalekh | Private Resume Builder" />
+    <meta name="twitter:description" content="100% Local, zero-server resume builder with ATS matching." />
+    <meta name="twitter:image" content="https://kashishoo7.github.io/svalekh/og-image.jpg" />
+
+    <title>Svalekh - Private Resume Builder</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
