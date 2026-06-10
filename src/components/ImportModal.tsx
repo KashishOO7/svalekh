@@ -60,7 +60,11 @@ export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
       }
     } catch (error) {
       console.error("Extraction error:", error);
-      window.alert("Failed to process the file. Please try again.");
+      if (error instanceof Error && error.message === 'NO_TEXT_LAYER') {
+        window.alert("This PDF has no selectable text — it looks like a scanned image or photo. Svalekh parses text locally and can't read image-only PDFs. Please export your resume as a text-based PDF (e.g. from Word, Google Docs, or LaTeX) and try again.");
+      } else {
+        window.alert("Failed to process the file. Please try again, or import a .json backup instead.");
+      }
     } finally {
       setIsProcessing(false);
       e.target.value = '';
