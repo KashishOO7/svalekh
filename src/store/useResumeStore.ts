@@ -43,7 +43,6 @@ const DEFAULT_THEME: ResumeTheme = { accentColor: '#2B5797', fontFamily: 'Calibr
 const genId = (p: string) => p + Math.random().toString(36).substring(2, 9);
 const moveInArray = <T>(arr: T[], from: number, to: number): T[] => { const result = [...arr]; const [removed] = result.splice(from, 1); result.splice(to, 0, removed); return result; };
 
-
 let toastTimeout: ReturnType<typeof setTimeout>;
 
 export const useResumeStore = create<ResumeState>()(temporal(persist((set) => ({
