@@ -5,9 +5,11 @@ import './index.css'
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    const base = import.meta.env.BASE_URL || '/';
+    const swUrl = `${base}sw.js`.replace(/\/{2,}/g, '/');
+    navigator.serviceWorker.register(swUrl, { scope: base })
       .then((registration) => {
-        console.log('[Service Worker] Registered successfully:', registration.scope);
+        console.log('[Service Worker] Registered:', registration.scope);
       })
       .catch((error) => {
         console.log('[Service Worker] Registration failed:', error);
