@@ -4,11 +4,11 @@ Svalekh is a 100% local, zero-server, privacy-first resume builder. It is design
 
 ## The Problem
 
-Modern resume builders operate on a hostage model. They force account creation, harvest your career history (often funneling it into third-party LLM training pipelines), and put standard PDF exports behind a $15/month paywall.
+Modern resume builders operate on a hostage model. They force account creation, harvest your career history (often funneling it into third-party LLM training pipelines), and put standard PDF exports behind a $15/month paywall. 
 
 ## The Svalekh Approach
 
-Svalekh is built on a strict **local-first architecture**. It has no backend.
+Svalekh is built on a strict **local-first architecture**. It has no backend. 
 
 By eliminating the server, we eliminate the privacy risk, the hosting costs, and the paywall. Everything—from the rich-text editor to the PDF parser and ATS keyword scanner—executes directly within your browser's memory.
 
