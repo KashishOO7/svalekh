@@ -58,7 +58,7 @@ Built for durability and immediate execution using modern web primitives:
 1. Clone the repository:
 
    ```bash
-   git clone [https://github.com/KashishOO7/svalekh.git](https://github.com/KashishOO7/svalekh.git)
+   git clone https://github.com/KashishOO7/svalekh.git
    ```
 
 2. Navigate to the project directory:
