@@ -1,32 +1,96 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useStore } from 'zustand';
 import { useResumeStore, calculateATSScore } from './store/useResumeStore';
 import RichTextEditor from './components/RichTextEditor';
 import ImportModal from './components/ImportModal';
 import WelcomeModal from './components/WelcomeModal';
-import { Undo2, Redo2, Printer, ArrowUp, ArrowDown, Plus, Trash2, EyeOff, Sparkles, SlidersHorizontal, Layers, Contact2, Repeat, X, Wand2, Database, Eye, Code, Bot, Menu, FolderOpen, Save, GripVertical, Copy, Target, FileText, Columns } from 'lucide-react';
+import { Undo2, Redo2, Printer, ArrowUp, ArrowDown, Plus, Trash2, EyeOff, Sparkles, SlidersHorizontal, Layers, Contact2, Repeat, X, Wand2, Database, Eye, Code, Bot, Menu, FolderOpen, Save, Copy, Target, FileText, Columns, HelpCircle } from 'lucide-react';
 
 export default function App() {
   const state = useResumeStore();
   const { undo, redo, clear } = useResumeStore.temporal.getState();
-  
-  const pastStates = useResumeStore.temporal.getState().pastStates || [];
-  const futureStates = useResumeStore.temporal.getState().futureStates || [];
-
+  const pastStates = useStore(useResumeStore.temporal, (s) => s.pastStates);
+  const futureStates = useStore(useResumeStore.temporal, (s) => s.futureStates);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isFitting, setIsFitting] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sectionToAdd, setSectionToAdd] = useState<{title: string, type: any}>({title: 'Experience', type: 'bullets'});
-  
   const [llmPromptType, setLlmPromptType] = useState('enhance');
-  
   const [isJobMatcherOpen, setIsJobMatcherOpen] = useState(false);
   const [matchScore, setMatchScore] = useState<{score: number, matched: string[], missing: string[]} | null>(null);
-
   const canvasRef = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(1);
+  const twoColRef = useRef<HTMLDivElement>(null);
+  const resizingRef = useRef(false);
+  const liveRatioRef = useRef<number | null>(null);
+  const [liveRatio, setLiveRatio] = useState<number | null>(null);
+  const onResizeHandleDown = (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (!resizingRef.current || !twoColRef.current) return;
+      const rect = twoColRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const r = Math.min(0.5, Math.max(0.2, (e.clientX - rect.left) / rect.width));
+      liveRatioRef.current = r;
+      setLiveRatio(r);
+    };
+    const up = () => {
+      if (!resizingRef.current) return;
+      resizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      if (liveRatioRef.current != null) {
+        const committed = Number(liveRatioRef.current.toFixed(3));
+        useResumeStore.getState().updateTheme('twoColumnRatio', committed);
+        console.log('[TwoCol] committed ratio', committed);
+      }
+      liveRatioRef.current = null;
+      setLiveRatio(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, []);
 
-  const atsAnalysis = calculateATSScore(state);
+  const atsAnalysis = useMemo(
+    () => calculateATSScore(state),
+    [state.name, state.tagline, state.contacts, state.sections],
+  );
+
+  const themeRef = useRef(state.theme); themeRef.current = state.theme;
+  const fitIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [pageBreaks, setPageBreaks] = useState<number[]>([]);
+  const PX_PER_IN = 96;
+
+  const measureFit = () => {
+    const el = document.getElementById('resume-print-target');
+    const t = themeRef.current;
+    const paddingPx = (t.marginTop + t.marginBottom) * PX_PER_IN;
+    const printable = (11 - t.marginTop - t.marginBottom) * PX_PER_IN;
+    const contentHeight = el ? el.scrollHeight - paddingPx : 0;
+    return { el, printable, contentHeight };
+  };
+
+  const cleanName = () => state.name.replace(/<[^>]*>?/gm, '').trim();
+  const fileBase = () => (cleanName().replace(/\s+/g, '_') || 'svalekh');
+
+  const BLOCK_CHAR = '\u2588';
+  const blocksForExport = (text: string) => {
+    const len = (text || '').replace(/\s+/g, '').length;
+    return BLOCK_CHAR.repeat(Math.min(Math.max(len, 2), 60));
+  };
+  const maskRedactedClone = (root: HTMLElement) => {
+    const marks = root.querySelectorAll('mark[data-redacted]');
+    marks.forEach((m) => { (m as HTMLElement).textContent = blocksForExport(m.textContent || ''); });
+    console.log('[Redact][export] masked', marks.length, 'inline redaction(s) before serializing export');
+    return marks.length;
+  };
 
   useEffect(() => {
     const recalc = () => {
@@ -72,12 +136,13 @@ export default function App() {
     if (!target) return;
     const clone = target.cloneNode(true) as HTMLElement;
     clone.querySelectorAll('.print\\:hidden').forEach(el => el.remove());
+    maskRedactedClone(clone);
     const sourceHTML = header + clone.innerHTML + footer;
     const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${state.name.replace(/<[^>]*>?/gm, '').trim().replace(/\s+/g, '_')}_Resume.docx`;
+    link.download = `${fileBase()}_Resume.doc`;
     link.click();
     state.showToast("DOCX Exported Successfully!");
   };
@@ -87,9 +152,10 @@ export default function App() {
     if (!target) return;
     const clone = target.cloneNode(true) as HTMLElement;
     clone.querySelectorAll('.print\\:hidden').forEach(el => el.remove());
-    const htmlContent = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${state.name.replace(/<[^>]*>?/gm, '').trim()} - Resume</title><script src="https://cdn.tailwindcss.com"></script><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Fira+Code:wght@400;600&family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet"><style>body { background-color: #52525b; display: flex; justify-content: center; padding: 2rem; font-family: ${state.theme.fontFamily}; } .resume-container { background: white; width: 8.5in; min-height: 11in; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); padding-top: ${state.theme.marginTop}in; padding-bottom: ${state.theme.marginBottom}in; padding-left: ${state.theme.marginLeft}in; padding-right: ${state.theme.marginRight}in; text-align: ${state.theme.alignment}; } .is-redacted, .is-redacted * { background-color: #000000 !important; color: transparent !important; text-shadow: none !important; }</style></head><body><div class="resume-container">${clone.innerHTML}</div></body></html>`;
+    maskRedactedClone(clone);
+    const htmlContent = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${cleanName()} - Resume</title><script src="https://cdn.tailwindcss.com"></script><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Fira+Code:wght@400;600&family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet"><style>body { background-color: #52525b; display: flex; justify-content: center; padding: 2rem; font-family: ${state.theme.fontFamily}; } .resume-container { background: white; width: 8.5in; min-height: 11in; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); padding-top: ${state.theme.marginTop}in; padding-bottom: ${state.theme.marginBottom}in; padding-left: ${state.theme.marginLeft}in; padding-right: ${state.theme.marginRight}in; text-align: ${state.theme.alignment}; } mark[data-redacted], .is-redacted, .is-redacted * { background-color: #000000 !important; color: #000000 !important; text-shadow: none !important; }</style></head><body><div class="resume-container">${clone.innerHTML}</div></body></html>`;
     const blob = new Blob([htmlContent], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url;
-    a.download = `${state.name.replace(/<[^>]*>?/gm, '').trim().replace(/\s+/g, '_')}_Resume.html`; a.click(); URL.revokeObjectURL(url);
+    a.download = `${fileBase()}_Resume.html`; a.click(); URL.revokeObjectURL(url);
     state.showToast("Webpage Exported Successfully!");
   };
 
@@ -129,42 +195,86 @@ export default function App() {
   };
 
   const handleMagicFit = () => {
+    if (isFitting || fitIntervalRef.current) return;
+    const temporal = useResumeStore.temporal.getState();
+
+    let gap = state.theme.sectionGap;
+    let lh = state.theme.lineHeight;
+    let fs = state.theme.bodySize;
+
+    const initial = measureFit();
+    const shrinking = initial.contentHeight > initial.printable;
+
+    if (!shrinking && fs >= 10.5 && lh >= 1.35 && gap >= 12) { state.showToast("Already fits on one page."); return; }
+
     setIsFitting(true);
-    let currentGap = state.theme.sectionGap; 
-    let currentLineHeight = state.theme.lineHeight; 
-    let currentFontSize = state.theme.bodySize;
+    temporal.pause();
+    let lastGrow: '' | 'fs' | 'lh' | 'gap' = '';
+    let iterations = 0;
 
-    const fitInterval = setInterval(() => {
-      const el = document.getElementById('resume-print-target');
-      const threshold = Math.floor((11 - state.theme.marginTop - state.theme.marginBottom) * 96);
-      
-      if (el && el.scrollHeight > threshold) {
-        if (currentGap > 6) { 
-          currentGap -= 1; state.updateTheme('sectionGap', currentGap);
-        } else if (currentLineHeight > 1.2) { 
-          currentLineHeight -= 0.05; state.updateTheme('lineHeight', currentLineHeight);
-        } else if (currentFontSize > 9.5) { 
-          currentFontSize -= 0.25; state.updateTheme('bodySize', currentFontSize);
-        } else { 
-          clearInterval(fitInterval); 
-          setIsFitting(false); 
-          state.showToast("Max safe compression reached.");
+    const finish = (msg?: string) => {
+      if (fitIntervalRef.current) { clearInterval(fitIntervalRef.current); fitIntervalRef.current = null; }
+      temporal.resume();
+      setIsFitting(false);
+      if (msg) state.showToast(msg);
+    };
+
+    fitIntervalRef.current = setInterval(() => {
+      if (++iterations > 200) return finish("Layout adjusted.");
+      const { contentHeight, printable } = measureFit();
+      if (shrinking) {
+        if (contentHeight <= printable) return finish("Compressed to one page.");
+        if (gap > 6) { gap -= 1; state.updateTheme('sectionGap', gap); }
+        else if (lh > 1.15) { lh = +(lh - 0.05).toFixed(2); state.updateTheme('lineHeight', lh); }
+        else if (fs > 9) { fs = +(fs - 0.25).toFixed(2); state.updateTheme('bodySize', fs); }
+        else return finish("Maximum safe compression reached — consider trimming content.");
+      } else {
+        if (contentHeight > printable) {
+          if (lastGrow === 'fs') { fs = +(fs - 0.25).toFixed(2); state.updateTheme('bodySize', fs); }
+          else if (lastGrow === 'lh') { lh = +(lh - 0.05).toFixed(2); state.updateTheme('lineHeight', lh); }
+          else if (lastGrow === 'gap') { gap -= 1; state.updateTheme('sectionGap', gap); }
+          return finish("Expanded to fill the page.");
         }
-      } else { 
-        clearInterval(fitInterval); 
-        setIsFitting(false); 
+        if (fs < 10.5) { fs = +(fs + 0.25).toFixed(2); state.updateTheme('bodySize', fs); lastGrow = 'fs'; }
+        else if (lh < 1.35) { lh = +(lh + 0.05).toFixed(2); state.updateTheme('lineHeight', lh); lastGrow = 'lh'; }
+        else if (gap < 12) { gap += 1; state.updateTheme('sectionGap', gap); lastGrow = 'gap'; }
+        else return finish("Spacing balanced.");
       }
-    }, 150);
+    }, 120);
   };
 
-  const handleDragStart = (e: React.DragEvent, id: string) => { e.dataTransfer.setData('sectionId', id); e.currentTarget.classList.add('opacity-50'); };
-  const handleDragEnd = (e: React.DragEvent) => { e.currentTarget.classList.remove('opacity-50'); };
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
-    const draggedId = e.dataTransfer.getData('sectionId');
-    if (draggedId && draggedId !== targetId) state.reorderSections(draggedId, targetId);
-    e.currentTarget.classList.remove('bg-zinc-800/50');
-  };
+  useEffect(() => {
+    const el = document.getElementById('resume-print-target');
+    if (!el) return;
+    const recompute = () => {
+      const t = themeRef.current;
+      const printable = (11 - t.marginTop - t.marginBottom) * PX_PER_IN;
+      const paddingTopPx = t.marginTop * PX_PER_IN;
+      const paddingPx = (t.marginTop + t.marginBottom) * PX_PER_IN;
+      if (printable <= 0) { setPageBreaks([]); return; }
+      const contentHeight = el.scrollHeight - paddingPx;
+      const pages = Math.max(1, Math.ceil(contentHeight / printable));
+      const breaks: number[] = [];
+      for (let k = 1; k < pages; k++) breaks.push(paddingTopPx + k * printable);
+      setPageBreaks(breaks);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!state.autoFitRequested) return;
+    const id = setTimeout(() => {
+      const { contentHeight, printable } = measureFit();
+      if (printable > 0 && contentHeight > printable + 8) {
+        state.showToast("Imported. Runs past one page — click Magic Fit to compress when ready.");
+      }
+      state.setAutoFitRequested(false);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [state.autoFitRequested]);
 
   const confirmDeleteSection = (id: string) => { if (window.confirm("Delete this entire section? This action cannot be undone.")) { state.removeSection(id); state.showToast("Section Deleted"); } };
   
@@ -174,35 +284,45 @@ export default function App() {
   };
 
   const handleSaveLibrary = () => {
-    const name = prompt("Name this resume version (e.g. Google Application):");
+    const name = prompt("Name this resume (using an existing name overwrites that saved copy):");
     if (name) { state.saveCurrentToLibrary(name); state.showToast("Saved to My Documents!"); }
   };
 
   const handleLoadFromLibrary = (id: string) => { state.loadFromLibrary(id); clear(); state.showToast("Document Loaded"); };
-
-  const hasSidebarContent = state.sections.some(s => s.type === 'skills' || s.type === 'certs');
+  const colOf = (s: any): 'main' | 'side' => s.column ? s.column : ((s.type === 'skills' || s.type === 'certs') ? 'side' : 'main');
+  const sideSections = state.sections.filter((s) => colOf(s) === 'side');
+  const mainSections = state.sections.filter((s) => colOf(s) === 'main');
+  const hasSidebarContent = sideSections.length > 0;
   const isTwoColumn = state.theme.layoutMode === 'two-column' && hasSidebarContent;
+  const sideRatio = liveRatio ?? Math.min(0.5, Math.max(0.2, state.theme.twoColumnRatio ?? 0.33));
 
-  const renderSection = (section: any) => (
-    <div key={section.id} className="relative group/section w-full border-l-2 border-transparent hover:border-zinc-300 pl-2 -ml-2 transition-colors cursor-default" style={{ textAlign: state.theme.alignment as any }} draggable onDragStart={(e) => handleDragStart(e, section.id)} onDragEnd={handleDragEnd} onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-zinc-100/50'); }} onDragLeave={(e) => e.currentTarget.classList.remove('bg-zinc-100/50')} onDrop={(e) => handleDrop(e, section.id)}>
-      <div className="absolute -left-7 top-1 opacity-0 group-hover/section:opacity-100 cursor-grab active:cursor-grabbing text-zinc-300 hover:text-zinc-600 print:hidden z-40 p-0.5" title="Drag to reorder section"><GripVertical size={16} /></div>
-      <div className="absolute -left-[4.5rem] top-0 opacity-0 group-hover/section:opacity-100 focus-within:opacity-100 transition-opacity flex flex-col gap-0.5 print:hidden bg-white/95 p-1 border border-zinc-200 shadow-lg rounded-lg z-30">
-        <button onClick={() => state.moveSection(section.id, -1)} className="p-1 text-zinc-500 hover:text-zinc-800 bg-zinc-50 rounded border hover:bg-zinc-100 outline-none"><ArrowUp size={12}/></button>
-        <button onClick={() => state.moveSection(section.id, 1)} className="p-1 text-zinc-500 hover:text-zinc-800 bg-zinc-50 rounded border hover:bg-zinc-100 outline-none"><ArrowDown size={12}/></button>
-        <div className="relative group/switcher mt-1 pt-1 border-t border-zinc-200 focus-within:opacity-100">
-          <button className="p-1 text-zinc-600 hover:text-zinc-900 bg-zinc-100 rounded border border-zinc-200 flex items-center justify-center outline-none"><Repeat size={12}/></button>
-          <div className="absolute left-full top-0 ml-1 hidden group-hover/switcher:flex flex-col bg-white border shadow-lg rounded p-1 gap-1 w-24 z-40">
-             <button onClick={() => state.updateSectionType(section.id, 'bullets')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Bullets</button>
-             <button onClick={() => state.updateSectionType(section.id, 'skills')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Skills</button>
-             <button onClick={() => state.updateSectionType(section.id, 'text')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Paragraph</button>
-             <button onClick={() => state.updateSectionType(section.id, 'certs')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Certs</button>
+  const renderSection = (section: any) => {
+    const anchorRight = isTwoColumn && colOf(section) === 'main';
+    return (
+    <div key={section.id} className="relative group/section w-full border-l-2 border-transparent hover:border-zinc-300 pl-2 -ml-2 transition-colors cursor-default" style={{ textAlign: state.theme.alignment as any }}>
+      <div className="relative w-full mb-1 group/edit group/sechead" style={{ color: 'var(--accent)', textTransform: state.theme.headingCaps ? 'uppercase' : 'none', fontSize: `${state.theme.bodySize * 1.1}pt` }}>
+        <div className={`absolute ${anchorRight ? 'left-full pl-2' : 'right-full pr-2'} top-0 opacity-0 pointer-events-none group-hover/sechead:opacity-100 group-hover/sechead:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity print:hidden z-40`}>
+         <div className="flex flex-col gap-0.5 bg-white/95 p-0.5 border border-zinc-200 shadow-lg rounded-lg">
+          <button title="Move section up" aria-label="Move section up" onClick={() => state.moveSection(section.id, -1)} className="p-1 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded outline-none"><ArrowUp size={12}/></button>
+          <button title="Move section down" aria-label="Move section down" onClick={() => state.moveSection(section.id, 1)} className="p-1 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded outline-none"><ArrowDown size={12}/></button>
+          <div className="relative group/switcher">
+            <button title="Change section type" aria-label="Change section type" className="p-1 w-full flex justify-center text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded outline-none"><Repeat size={12}/></button>
+            <div className={`absolute ${anchorRight ? 'right-full pr-2' : 'left-full pl-2'} top-0 hidden group-hover/switcher:flex z-50`}>
+             <div className="flex flex-col bg-white border shadow-lg rounded p-1 gap-1 w-24">
+               <button onClick={() => state.updateSectionType(section.id, 'bullets')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Bullets</button>
+               <button onClick={() => state.updateSectionType(section.id, 'skills')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Skills</button>
+               <button onClick={() => state.updateSectionType(section.id, 'text')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Paragraph</button>
+               <button onClick={() => state.updateSectionType(section.id, 'certs')} className="text-[10px] text-left px-2 py-1 hover:bg-zinc-100 rounded">Certs</button>
+             </div>
+            </div>
           </div>
+          {state.theme.layoutMode === 'two-column' && (
+            <button title="Move section to other column" aria-label="Move section to other column" onClick={() => state.setSectionColumn(section.id, colOf(section) === 'side' ? 'main' : 'side')} className="p-1 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded outline-none"><Columns size={12}/></button>
+          )}
+          <button title="Delete section" aria-label="Delete section" onClick={() => confirmDeleteSection(section.id)} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded outline-none mt-0.5 border-t border-zinc-100 pt-1"><Trash2 size={12}/></button>
+         </div>
         </div>
-        <button onClick={() => confirmDeleteSection(section.id)} className="p-1 text-red-500 hover:text-red-600 bg-red-50 rounded border border-red-200 hover:bg-red-100 mt-1 outline-none"><Trash2 size={12}/></button>
-      </div>
-
-      <div className="w-full mb-1 group/edit" style={{ color: 'var(--accent)', textTransform: state.theme.headingCaps ? 'uppercase' : 'none', fontSize: `${state.theme.bodySize * 1.1}pt` }}>
-        <RichTextEditor id={`section-title-${section.id}`} content={section.title} onChange={(html) => state.updateSectionTitle(section.id, html.replace(/<[^>]*>?/gm, ''))} className="w-full font-bold tracking-widest bg-transparent outline-none hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
+        <RichTextEditor previewMode={previewMode} id={`section-title-${section.id}`} content={section.title} onChange={(html) => state.updateSectionTitle(section.id, html.replace(/<[^>]*>?/gm, ''))} className="w-full font-bold tracking-widest bg-transparent outline-none hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
         <div style={{ borderBottom: state.theme.underlines ? '1.5px solid var(--accent)' : 'none', marginTop: '-2px' }}></div>
       </div>
 
@@ -211,18 +331,20 @@ export default function App() {
           {section.items?.map((item: any) => (
             <div key={item.id} className="relative group/item w-full flex flex-col" style={{ textAlign: state.theme.alignment as any }}>
               {!previewMode && (
-                <div className="absolute -left-7 top-0 opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 transition-opacity flex gap-0.5 print:hidden z-30"><button onClick={() => { if(window.confirm("Delete this entry? This action cannot be undone.")) state.removeEntry(section.id, item.id); }} className="p-1 text-red-500 hover:text-red-700 bg-zinc-50 border rounded shadow-sm outline-none"><Trash2 size={11}/></button></div>
+                <div className={`absolute ${anchorRight ? 'left-full pl-2' : 'right-full pr-2'} top-0 opacity-0 pointer-events-none group-hover/item:opacity-100 group-hover/item:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity flex print:hidden z-30`}><button title="Delete this entry" aria-label="Delete entry" onClick={() => { if(window.confirm("Delete this entry? This action cannot be undone.")) state.removeEntry(section.id, item.id); }} className="p-1 text-red-500 hover:text-red-700 bg-white/95 border border-zinc-200 rounded shadow-sm outline-none"><Trash2 size={12}/></button></div>
               )}
               <div className={`flex items-baseline w-full ${state.theme.datePlacement === 'space-between' ? 'justify-between' : 'justify-start gap-4'}`}>
                 <div className="font-bold text-zinc-900 bg-transparent flex-1" style={{ textAlign: state.theme.alignment === 'right' ? 'right' : 'left' }}>
-                   <RichTextEditor id={`title-${item.id}`} content={item.title} onChange={(html) => state.updateEntryField(section.id, item.id, 'title', html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
+                   {(item.title && item.title.replace(/<[^>]*>?/gm, '').trim())
+                     ? <RichTextEditor previewMode={previewMode} id={`title-${item.id}`} content={item.title} onChange={(html) => state.updateEntryField(section.id, item.id, 'title', html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
+                     : (!previewMode && <button onClick={() => state.updateEntryField(section.id, item.id, 'title', 'Untitled')} className="text-[10px] font-semibold text-zinc-400 hover:text-zinc-600 print:hidden px-1 border border-dashed rounded">+ Add Title</button>)}
                 </div>
                 {item.date !== undefined ? (
-                  <div className={`text-zinc-500 shrink-0 relative group/date flex flex-col justify-start pr-6 -mr-6 min-w-fit ${state.theme.datePlacement === 'space-between' ? 'text-right' : 'text-left'}`}>
+                  <div className={`text-zinc-500 shrink-0 relative group/date flex flex-col justify-start pr-6 -mr-6 print:pr-0 print:mr-0 min-w-fit ${state.theme.datePlacement === 'space-between' ? 'text-right' : 'text-left'}`}>
                     {!previewMode && (
-                      <button onClick={() => state.updateEntryField(section.id, item.id, 'date', undefined)} className="absolute right-1 -top-1 opacity-0 group-hover/date:opacity-100 focus-within:opacity-100 flex items-center justify-center text-zinc-400 hover:text-red-500 print:hidden z-10 p-0.5 bg-white rounded-full shadow border h-4 w-4 transition-opacity outline-none" title="Remove Date"><X size={10}/></button>
+                      <button onClick={() => state.updateEntryField(section.id, item.id, 'date', undefined)} className="absolute right-1 -top-1 opacity-0 pointer-events-none group-hover/date:opacity-100 group-hover/date:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto flex items-center justify-center text-zinc-400 hover:text-red-500 print:hidden z-10 bg-white rounded-full shadow border h-5 w-5 transition-opacity outline-none" title="Remove date" aria-label="Remove date"><X size={11}/></button>
                     )}
-                    <div className="pr-6"><RichTextEditor id={`date-${item.id}`} content={item.date} onChange={(html) => state.updateEntryField(section.id, item.id, 'date', html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div>
+                    <div className="pr-6 print:pr-0"><RichTextEditor previewMode={previewMode} id={`date-${item.id}`} content={item.date} onChange={(html) => state.updateEntryField(section.id, item.id, 'date', html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div>
                   </div>
                 ) : (
                   !previewMode && <button onClick={() => state.updateEntryField(section.id, item.id, 'date', 'Timeline')} className="text-[9px] font-semibold text-zinc-400 hover:text-zinc-600 print:hidden ml-2 px-1 border border-dashed rounded">+ Date</button>
@@ -230,11 +352,11 @@ export default function App() {
               </div>
               
               {item.subtitle !== undefined ? (
-                <div className="text-zinc-600 italic bg-transparent w-full relative group/subtitle flex flex-col justify-start pl-6 -ml-6" style={{ textAlign: state.theme.alignment === 'right' ? 'right' : 'left' }}>
+                <div className="text-zinc-600 italic bg-transparent w-full relative group/subtitle flex flex-col justify-start pl-6 -ml-6 print:pl-0 print:ml-0" style={{ textAlign: state.theme.alignment === 'right' ? 'right' : 'left' }}>
                     {!previewMode && (
-                      <button onClick={() => state.updateEntryField(section.id, item.id, 'subtitle', undefined)} className="absolute left-1 top-1 opacity-0 group-hover/subtitle:opacity-100 focus-within:opacity-100 flex items-center justify-center text-zinc-400 hover:text-red-500 print:hidden z-10 p-0.5 bg-white rounded-full shadow border h-4 w-4 transition-opacity outline-none"><X size={10}/></button>
+                      <button onClick={() => state.updateEntryField(section.id, item.id, 'subtitle', undefined)} className="absolute left-1 top-1 opacity-0 pointer-events-none group-hover/subtitle:opacity-100 group-hover/subtitle:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto flex items-center justify-center text-zinc-400 hover:text-red-500 print:hidden z-10 bg-white rounded-full shadow border h-5 w-5 transition-opacity outline-none" title="Remove subtitle" aria-label="Remove subtitle"><X size={11}/></button>
                     )}
-                    <RichTextEditor id={`subtitle-${item.id}`} content={item.subtitle} onChange={(html) => state.updateEntryField(section.id, item.id, 'subtitle', html)} className="w-full hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
+                    <RichTextEditor previewMode={previewMode} id={`subtitle-${item.id}`} content={item.subtitle} onChange={(html) => state.updateEntryField(section.id, item.id, 'subtitle', html)} className="w-full hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
                 </div>
               ) : (
                 !previewMode && (
@@ -243,29 +365,33 @@ export default function App() {
               )}
 
               {item.description !== undefined ? (
-                <div className="text-zinc-800 bg-transparent w-full relative group/desc flex flex-col justify-start pl-6 -ml-6 mt-1" style={{ textAlign: state.theme.alignment === 'right' ? 'right' : 'left' }}>
+                <div className="text-zinc-800 bg-transparent w-full relative group/desc flex flex-col justify-start pl-6 -ml-6 print:pl-0 print:ml-0 mt-1" style={{ textAlign: state.theme.alignment === 'right' ? 'right' : 'left' }}>
                     {!previewMode && (
-                      <button onClick={() => state.updateEntryField(section.id, item.id, 'description', undefined)} className="absolute left-1 top-1 opacity-0 group-hover/desc:opacity-100 focus-within:opacity-100 flex items-center justify-center text-zinc-400 hover:text-red-500 print:hidden z-10 p-0.5 bg-white rounded-full shadow border h-4 w-4 transition-opacity outline-none"><X size={10}/></button>
+                      <button onClick={() => state.updateEntryField(section.id, item.id, 'description', undefined)} className="absolute left-1 top-1 opacity-0 pointer-events-none group-hover/desc:opacity-100 group-hover/desc:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto flex items-center justify-center text-zinc-400 hover:text-red-500 print:hidden z-10 bg-white rounded-full shadow border h-5 w-5 transition-opacity outline-none" title="Remove paragraph" aria-label="Remove paragraph"><X size={11}/></button>
                     )}
-                    <RichTextEditor id={`desc-${item.id}`} content={item.description} onChange={(html) => state.updateEntryField(section.id, item.id, 'description', html)} className="w-full hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
+                    <RichTextEditor previewMode={previewMode} id={`desc-${item.id}`} content={item.description} onChange={(html) => state.updateEntryField(section.id, item.id, 'description', html)} className="w-full hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
                 </div>
               ) : null}
 
               <div className="mt-1 flex flex-col relative w-full" style={{ gap: '3px', paddingLeft: state.theme.alignment === 'right' ? '0' : '1.25rem', paddingRight: state.theme.alignment === 'right' ? '1.25rem' : '0' }}>
-                {item.bullets?.map((bullet: any, bIdx: number) => (
-                  <div key={bIdx} className="relative group/bullet w-full flex items-start pr-12 -mr-12" style={{ justifyContent: state.theme.alignment === 'right' ? 'flex-end' : 'flex-start' }}>
+                {item.bullets?.map((bullet: any, bIdx: number) => {
+                  const bulletEmpty = !bullet || !String(bullet).replace(/<[^>]*>?/gm, '').trim();
+                  if (bulletEmpty && previewMode) return null;
+                  return (
+                  <div key={bIdx} className={`relative group/bullet w-full flex items-start pr-12 -mr-12 print:pr-0 print:mr-0 ${bulletEmpty ? 'print:hidden' : ''}`} style={{ justifyContent: state.theme.alignment === 'right' ? 'flex-end' : 'flex-start' }}>
                     {state.theme.alignment !== 'right' && ( <span className="absolute -left-4 top-[0.15em] text-zinc-800 select-none font-bold text-[0.95em]">{state.theme.bulletStyle}</span> )}
                     {!previewMode && (
-                      <div className="absolute right-0 top-0 opacity-0 group-hover/bullet:opacity-100 focus-within:opacity-100 transition-opacity flex gap-0.5 print:hidden z-30 bg-white shadow-sm border rounded">
-                        <button onClick={() => state.moveBullet(section.id, item.id, bIdx, -1)} className="p-0.5 text-zinc-500 hover:text-zinc-800 outline-none focus:ring-1 focus:ring-zinc-800"><ArrowUp size={10}/></button>
-                        <button onClick={() => state.moveBullet(section.id, item.id, bIdx, 1)} className="p-0.5 text-zinc-500 hover:text-zinc-800 outline-none focus:ring-1 focus:ring-zinc-800"><ArrowDown size={10}/></button>
-                        <button onClick={() => { if(window.confirm("Delete this bullet?")) state.removeBullet(section.id, item.id, bIdx); }} className="p-0.5 text-red-500 hover:text-red-700 outline-none focus:ring-1 focus:ring-red-500"><Trash2 size={10}/></button>
+                      <div className="absolute right-0 top-0 opacity-0 pointer-events-none group-hover/bullet:opacity-100 group-hover/bullet:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity flex gap-1 p-0.5 print:hidden z-30 bg-white shadow-sm border rounded">
+                        <button title="Move line up" aria-label="Move line up" onClick={() => state.moveBullet(section.id, item.id, bIdx, -1)} className="p-1 text-zinc-500 hover:text-zinc-800 outline-none focus:ring-1 focus:ring-zinc-800 rounded"><ArrowUp size={10}/></button>
+                        <button title="Move line down" aria-label="Move line down" onClick={() => state.moveBullet(section.id, item.id, bIdx, 1)} className="p-1 text-zinc-500 hover:text-zinc-800 outline-none focus:ring-1 focus:ring-zinc-800 rounded"><ArrowDown size={10}/></button>
+                        <button title="Delete line" aria-label="Delete line" onClick={() => { if(window.confirm("Delete this bullet?")) state.removeBullet(section.id, item.id, bIdx); }} className="p-1 text-red-500 hover:text-red-700 outline-none focus:ring-1 focus:ring-red-500 rounded"><Trash2 size={10}/></button>
                       </div>
                     )}
-                    <RichTextEditor id={`bullet-${section.id}-${item.id}-${bIdx}`} content={bullet} onChange={(html) => state.updateBullet(section.id, item.id, bIdx, html)} className="w-full pr-12 hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
+                    <RichTextEditor previewMode={previewMode} id={`bullet-${section.id}-${item.id}-${bIdx}`} content={bullet} onChange={(html) => state.updateBullet(section.id, item.id, bIdx, html)} className="w-full pr-12 print:pr-0 hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
                     {state.theme.alignment === 'right' && ( <span className="absolute -right-4 top-[0.15em] text-zinc-800 select-none font-bold text-[0.95em]">{state.theme.bulletStyle}</span> )}
                   </div>
-                ))}
+                  );
+                })}
                 {!previewMode && (
                   <div className="flex gap-2 print:hidden mt-1 w-full" style={{ justifyContent: state.theme.alignment === 'right' ? 'flex-end' : 'flex-start' }}>
                     <button onClick={() => state.addBullet(section.id, item.id)} className="w-fit text-zinc-600 hover:text-zinc-900 text-[10px] font-semibold flex items-center gap-0.5 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200 transition-colors"><Plus size={10}/> Add Line</button>
@@ -279,11 +405,12 @@ export default function App() {
         </div>
       )}
 
-      {section.type === 'skills' && ( <div className="text-zinc-800 w-full text-inherit mt-2" style={{ textAlign: state.theme.alignment as any }}><RichTextEditor id={`skills-${section.id}`} content={section.text || ''} onChange={(html) => state.updateSectionText(section.id, html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div> )}
-      {section.type === 'text' && ( <div className="text-zinc-800 w-full text-inherit mt-2" style={{ textAlign: state.theme.alignment as any }}><RichTextEditor id={`text-${section.id}`} content={section.text || ''} onChange={(html) => state.updateSectionText(section.id, html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div> )}
-      {section.type === 'certs' && ( <div className="text-zinc-800 w-full text-inherit mt-2" style={{ textAlign: state.theme.alignment as any }}><RichTextEditor id={`certs-${section.id}`} content={section.text || ''} onChange={(html) => state.updateSectionText(section.id, html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div> )}
+      {section.type === 'skills' && ( <div className="text-zinc-800 w-full text-inherit mt-2" style={{ textAlign: state.theme.alignment as any }}><RichTextEditor previewMode={previewMode} id={`skills-${section.id}`} content={section.text || ''} onChange={(html) => state.updateSectionText(section.id, html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div> )}
+      {section.type === 'text' && ( <div className="text-zinc-800 w-full text-inherit mt-2" style={{ textAlign: state.theme.alignment as any }}><RichTextEditor previewMode={previewMode} id={`text-${section.id}`} content={section.text || ''} onChange={(html) => state.updateSectionText(section.id, html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div> )}
+      {section.type === 'certs' && ( <div className="text-zinc-800 w-full text-inherit mt-2" style={{ textAlign: state.theme.alignment as any }}><RichTextEditor previewMode={previewMode} id={`certs-${section.id}`} content={section.text || ''} onChange={(html) => state.updateSectionText(section.id, html)} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div> )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#09090B] flex print:bg-white print:block overflow-hidden relative" style={{ '--accent': state.theme.accentColor, fontFamily: state.theme.fontFamily, fontSize: `${state.theme.bodySize}pt`, lineHeight: state.theme.lineHeight } as React.CSSProperties}>
@@ -366,7 +493,7 @@ export default function App() {
       {!previewMode && (
         <div className={`w-[340px] bg-[#18181A] p-5 h-screen overflow-y-auto flex flex-col gap-5 text-zinc-300 print:hidden border-r border-zinc-800 shrink-0 fixed md:sticky top-0 z-40 transition-transform duration-300 ease-in-out scrollbar-none ${mobileMenuOpen ? 'translate-x-0 pt-16' : '-translate-x-full md:translate-x-0'}`}>
           <div className="hidden md:block">
-            <div className="flex justify-between items-center mb-4 border-b border-zinc-800/50 pb-2"><h2 className="font-bold text-white text-base tracking-wide flex items-center gap-2"><Sparkles size={16} className="text-zinc-400" /> Svalekh</h2></div>
+            <div className="flex justify-between items-center mb-4 border-b border-zinc-800/50 pb-2"><h2 className="font-bold text-white text-base tracking-wide flex items-center gap-2"><Sparkles size={16} className="text-zinc-400" /> Svalekh</h2><button onClick={() => state.setHasSeenWelcome(false)} title="Open the guide & home screen" aria-label="Open the guide" className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 rounded px-1.5 py-1 transition-colors outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"><HelpCircle size={13} /> Guide</button></div>
             <div className="flex gap-2 mb-3">
               <button onClick={() => pastStates.length > 0 && undo()} className={`flex-1 flex justify-center items-center gap-1.5 bg-[#09090B] p-2 rounded text-xs transition-colors border border-zinc-800 outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${pastStates.length === 0 ? 'opacity-50 cursor-not-allowed text-zinc-600' : 'hover:bg-zinc-900 text-zinc-300'}`}><Undo2 size={13} /> Undo</button>
               <button onClick={() => futureStates.length > 0 && redo()} className={`flex-1 flex justify-center items-center gap-1.5 bg-[#09090B] p-2 rounded text-xs transition-colors border border-zinc-800 outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${futureStates.length === 0 ? 'opacity-50 cursor-not-allowed text-zinc-600' : 'hover:bg-zinc-900 text-zinc-300'}`}>Redo <Redo2 size={13} /></button>
@@ -443,7 +570,7 @@ export default function App() {
             <div className="flex flex-col gap-2 max-h-36 overflow-y-auto pr-1">
               {state.contacts.map((contact) => (
                 <div key={contact.id} className="bg-[#09090B] border border-zinc-800 p-2 rounded-lg flex flex-col gap-1.5 relative group/card focus-within:ring-1 focus-within:ring-zinc-500">
-                  <button onClick={() => state.removeContactField(contact.id)} className="absolute top-1 right-1 opacity-0 group-hover/card:opacity-100 group-focus-within/card:opacity-100 text-zinc-600 hover:text-red-400 transition-all outline-none"><Trash2 size={11}/></button>
+                  <button title="Remove contact field" aria-label="Remove contact field" onClick={() => state.removeContactField(contact.id)} className="absolute top-1 right-1 opacity-0 pointer-events-none group-hover/card:opacity-100 group-hover/card:pointer-events-auto group-focus-within/card:opacity-100 group-focus-within/card:pointer-events-auto text-zinc-600 hover:text-red-400 transition-all outline-none p-0.5"><Trash2 size={12}/></button>
                   <div className="flex gap-1.5">
                     <input type="text" value={contact.label} onFocus={(e) => e.target.select()} onChange={(e) => state.updateContactField(contact.id, 'label', e.target.value)} placeholder="Label" className="bg-[#18181A] border border-zinc-800 text-zinc-300 text-[10px] p-1 rounded w-16 outline-none" />
                     <input type="text" value={contact.value} onFocus={(e) => e.target.select()} onChange={(e) => state.updateContactField(contact.id, 'value', e.target.value)} placeholder="Value" className="bg-[#18181A] border border-zinc-800 text-zinc-300 text-[10px] p-1 rounded flex-1 outline-none" />
@@ -490,13 +617,21 @@ export default function App() {
             marginBottom: previewScale < 1 ? `${(previewScale - 1) * 100}%` : undefined,
           }}
         >
-        <div id="resume-print-target" className="w-[816px] h-fit bg-white relative shadow-2xl print:shadow-none page-breaker-overlay" style={{ paddingTop: `${state.theme.marginTop}in`, paddingBottom: `${state.theme.marginBottom}in`, paddingLeft: `${state.theme.marginLeft}in`, paddingRight: `${state.theme.marginRight}in`, textAlign: state.theme.alignment as any }}>
-          
+        <div id="resume-print-target" className="w-[816px] h-fit bg-white relative shadow-2xl print:shadow-none" style={{ paddingTop: `${state.theme.marginTop}in`, paddingBottom: `${state.theme.marginBottom}in`, paddingLeft: `${state.theme.marginLeft}in`, paddingRight: `${state.theme.marginRight}in`, textAlign: state.theme.alignment as any }}>
+          {pageBreaks.map((y, i) => (
+            <div key={`pb-${i}`} className="print:hidden pointer-events-none absolute left-0 right-0 z-20" style={{ top: `${y}px` }}>
+              <div className="border-t-2 border-dashed border-red-400/70" />
+              <span className="absolute right-1 -top-[14px] text-[9px] font-semibold text-red-500/80 bg-white/85 px-1 rounded">Page {i + 2}</span>
+            </div>
+          ))}
+
           <div className="mb-4 pb-2 relative w-full flex flex-col group/header" style={{ borderBottom: `${state.theme.underlines ? '2.5px solid var(--accent)' : 'none'}`, alignItems: state.theme.alignment === 'center' ? 'center' : state.theme.alignment === 'right' ? 'flex-end' : 'flex-start' }}>
             <div className={`font-black tracking-widest text-zinc-900 leading-none mb-1 w-full ${state.redactedElementIds.includes('global-name-header') ? 'is-redacted' : ''} ${state.redactedElementIds.includes('global-name-header') && state.redactMode ? 'redact-active-block' : ''}`} style={{ fontSize: `${state.theme.nameSize}pt`, textTransform: state.theme.nameCaps ? 'uppercase' : 'none', textAlign: state.theme.alignment as any, wordBreak: 'break-word', overflowWrap: 'anywhere' }} onClick={() => state.redactMode && state.toggleElementRedact('global-name-header')}>
-              <RichTextEditor id="editor-name" content={state.name} onChange={(html) => state.updateName(html.replace(/<\/(p|div)>|<br\s*\/?>/gi, ' ').replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim())} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />
+              {state.redactedElementIds.includes('global-name-header')
+                ? <span className="select-none" aria-label="redacted name">{'█'.repeat(Math.min(Math.max(cleanName().length, 3), 40))}</span>
+                : <RichTextEditor previewMode={previewMode} id="editor-name" content={state.name} onChange={(html) => state.updateName(html.replace(/<\/(p|div)>|<br\s*\/?>/gi, ' ').replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim())} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" />}
             </div>
-            <div className="text-zinc-600 italic w-full" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><RichTextEditor id="editor-tagline" content={state.tagline} onChange={state.updateTagline} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div>
+            <div className="text-zinc-600 italic w-full" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><RichTextEditor previewMode={previewMode} id="editor-tagline" content={state.tagline} onChange={state.updateTagline} className="hover:bg-zinc-100/50 hover:ring-1 hover:ring-dashed hover:ring-zinc-300 cursor-text rounded transition-all" /></div>
             
             <div className="flex flex-wrap items-center mt-3 gap-y-1 font-semibold select-none" style={{ color: 'var(--accent)', fontSize: `${state.theme.contactSize || 9.5}pt`, justifyContent: state.theme.alignment === 'center' ? 'center' : state.theme.alignment === 'right' ? 'flex-end' : 'flex-start' }}>
               {state.contacts.map((contact, index) => {
@@ -511,18 +646,31 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`w-full ${isTwoColumn ? 'flex flex-row-reverse gap-8 items-start' : ''}`}>
-            
-            <div className={`flex flex-col z-10 relative ${isTwoColumn ? 'w-2/3' : 'w-full'}`} style={{ gap: `${state.theme.sectionGap}px` }}>
-              {state.sections.filter(s => !isTwoColumn || (s.type !== 'skills' && s.type !== 'certs')).map(renderSection)}
+          <div ref={twoColRef} className={`w-full ${isTwoColumn ? 'flex flex-row-reverse items-start relative' : ''}`}>
+
+            <div className="flex flex-col z-10 relative" style={{ width: isTwoColumn ? `${(1 - sideRatio) * 100}%` : '100%', paddingLeft: isTwoColumn ? '1rem' : undefined, gap: `${state.theme.sectionGap}px` }}>
+              {(isTwoColumn ? mainSections : state.sections).map(renderSection)}
             </div>
 
             {isTwoColumn && (
-              <div className="flex flex-col z-10 relative w-1/3 border-r border-zinc-200 pr-6" style={{ gap: `${state.theme.sectionGap}px` }}>
-                {state.sections.filter(s => s.type === 'skills' || s.type === 'certs').map(renderSection)}
-              </div>
+              <>
+                <div
+                  role="separator"
+                  aria-label="Drag to resize columns"
+                  title="Drag to resize columns"
+                  onPointerDown={onResizeHandleDown}
+                  className="absolute top-0 bottom-0 w-4 -translate-x-1/2 z-30 cursor-col-resize print:hidden flex items-center justify-center group/resize"
+                  style={{ left: `${sideRatio * 100}%` }}
+                >
+                  <div className="w-px h-full bg-zinc-200 group-hover/resize:bg-zinc-400 transition-colors" />
+                  <div className="absolute h-10 w-1.5 rounded-full bg-zinc-300 group-hover/resize:bg-zinc-500 transition-colors" />
+                </div>
+                <div className="flex flex-col z-10 relative border-r border-zinc-200 pr-6" style={{ width: `${sideRatio * 100}%`, gap: `${state.theme.sectionGap}px` }}>
+                  {sideSections.map(renderSection)}
+                </div>
+              </>
             )}
-            
+
           </div>
         </div>
         </div>
