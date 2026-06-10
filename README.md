@@ -1,33 +1,50 @@
-# Svalekh - The Private Resume Builder
+# Svalekh (स्वलेख)
 
-Svalekh is a 100% local, zero-server, privacy-first resume builder designed to outperform premium paid platforms. No subscriptions, no paywalls, and absolutely no data harvesting.
+Svalekh is a 100% local, zero-server, privacy-first resume builder. It is designed to match the UI and UX of premium paid platforms without the paywalls, subscriptions, or data harvesting.
 
 ## The Problem
-Modern resume builders hold your data hostage. They force you to create an account, harvest your personal information, and put PDF exports behind a $15/month paywall. To make matters worse, many secretly transmit your career history to third-party servers for AI processing.
 
-## The Solution
-Svalekh is built on a strict **local-first architecture**. It operates entirely within your browser's memory.
+Modern resume builders operate on a hostage model. They force account creation, harvest your career history (often funneling it into third-party LLM training pipelines), and put standard PDF exports behind a $15/month paywall.
 
-By eliminating the backend, we eliminate the privacy risk, the hosting costs, and the paywall. You get a State-of-the-Art (SOTA) layout engine, offline PWA capabilities, and enterprise-grade PDF parsing—all executing directly on your local machine.
+## The Svalekh Approach
+
+Svalekh is built on a strict **local-first architecture**. It has no backend.
+
+By eliminating the server, we eliminate the privacy risk, the hosting costs, and the paywall. Everything—from the rich-text editor to the PDF parser and ATS keyword scanner—executes directly within your browser's memory.
+
+### SaaS Builders vs. Svalekh
+
+| Feature | Traditional SaaS | Svalekh |
+| :--- | :--- | :--- |
+| **Account Required** | Yes | No |
+| **Data Storage** | Remote Database | Local Browser / JSON Backup |
+| **PDF Export** | Paid / Watermarked | Free & Native |
+| **AI Data Harvesting** | Common | Impossible (Zero Server) |
+| **Offline Support** | No | Yes (PWA) |
+
+---
 
 ## Core Features
 
-- 🛡️ **Zero-Server Privacy:** No databases. No API calls. Your resume data never leaves your device.
-- 📐 **WYSIWYG Layout Engine V2:** A fixed-width rendering pipeline guarantees that what you see on the screen is exactly what the printer outputs. No page-spillover. No margin clipping.
-- 📄 **Local PDF Import:** Custom-built coordinate-mapping parser (via Mozilla's `pdf.js` worker) that reconstructs structured state from unstructured PDFs, directly in the browser.
-- ⬛ **Granular Redaction Mode:** SOTA text redaction. Select specific metrics, client names, or sensitive data and black them out dynamically for public sharing.
-- ⚡ **PWA Ready:** Install Svalekh directly to your desktop or mobile device. It works completely offline.
-- 💾 **JSON Portability:** Export your entire resume state as a clean `.json` file and import it anytime to pick up exactly where you left off.
+- 🛡️ **Absolute Privacy:** No API calls. No trackers. Your data never leaves your local machine.
+- 📐 **WYSIWYG Rendering:** What you see on the canvas is exactly what the PDF engine prints. Strict layout constraints prevent page-spillover and margin clipping.
+- 📄 **Local PDF Extraction:** Custom-built coordinate-mapping parser using Mozilla's `pdf.js` worker. It reconstructs structured text from uploaded PDFs entirely in the browser.
+- ⬛ **Non-Destructive Redaction:** Select sensitive data (client names, metrics, phone numbers) and mask it with solid black bars (`█`) for public sharing. The real text is preserved in your private state but scrubbed from the final export.
+- ⚡ **PWA Ready:** Install Svalekh directly to your desktop or mobile device. It caches the engine locally and works completely offline.
+- 💾 **JSON Portability:** Export your workspace state as a `.json` file. Keep your backups on your own hard drive and drop them back in whenever you need to update your resume.
 
 ## Tech Stack
 
-Built for speed and durability using modern web primitives:
+Built for durability and immediate execution using modern web primitives:
 
-- **Framework:** React + Vite
-- **State Management:** Zustand
-- **Styling:** Tailwind CSS
-- **Rich Text:** Tiptap Engine
-- **PDF Parsing:** pdf.js (Local Worker)
+* **Framework:** React + Vite
+* **State Management:** Zustand + Zundo (Temporal Undo/Redo)
+* **Styling:** Tailwind CSS
+* **Rich Text:** Tiptap Engine
+* **PDF Parsing:** pdf.js (Local Web Worker)
+* **PDF Generation:** @react-pdf/renderer
+
+---
 
 ## Getting Started
 
@@ -36,38 +53,43 @@ Built for speed and durability using modern web primitives:
 - Node.js (v18+)
 - npm or pnpm
 
-### Installation
+### Local Installation
 
 1. Clone the repository:
 
-```bash
+   ```bash
    git clone [https://github.com/KashishOO7/svalekh.git](https://github.com/KashishOO7/svalekh.git)
-
-   cd open-resume-pro
    ```
 
-2. Install dependencies:
+2. Navigate to the project directory:
 
-```bash
+   ```bash
+   cd svalekh
+   ```
+
+3. Install dependencies:
+
+   ```bash
    npm install
-```
+   ```
 
-3. Start the development server:
+4. Start the development server:
 
-```bash
+   ```bash
    npm run dev
-```
+   ```
 
-PWA & Offline Usage
-Svalekh is a Progressive Web App (PWA). Once you visit the live site, your browser will cache the engine.
+## PWA & Offline Usage
 
-Desktop: Look for the "Install" icon in your browser's address bar (Chrome/Edge/Brave) to install Svalekh as a standalone desktop application.
+Svalekh is a Progressive Web App. Once you load it in your browser, the engine is cached.
 
-Mobile: Tap "Share" and select "Add to Home Screen".
+**Desktop:** Click the "Install" icon in your browser's address bar (Chrome/Edge/Brave) to run Svalekh as a standalone window.
 
-Offline: Once installed, you can disconnect from the internet and continue to build, parse, and export your resume.
+**Mobile:** Tap "Share" and select "Add to Home Screen".
 
-License
+**Offline:** Once cached, you can disconnect your Wi-Fi and continue to build, parse, and export resumes normally.
+
+**License**
 This project is licensed under the AGPL-3.0 License - see the LICENSE file for details.
 
-Svalekh was built to remain free and open. If you modify this software and distribute it over a network, you must release your modified source code under the same license to ensure the tool remains free for everyone.
+_Svalekh_ was built to remain free and open. If you modify this software and distribute it or host it over a network, you must release your modified source code under the same license to ensure the tool remains free for everyone.
